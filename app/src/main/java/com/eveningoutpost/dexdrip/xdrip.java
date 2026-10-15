@@ -1,87 +1,209 @@
 package com.eveningoutpost.dexdrip;
 
+import android.annotation.SuppressLint;
 import android.app.Application;
 import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.preference.PreferenceManager;
+import androidx.annotation.StringRes;
 import android.util.Log;
 
-import com.crashlytics.android.Crashlytics;
-import com.crashlytics.android.core.CrashlyticsCore;
-import com.eveningoutpost.dexdrip.Models.AlertType;
-import com.eveningoutpost.dexdrip.Models.JoH;
-import com.eveningoutpost.dexdrip.Services.ActivityRecognizedService;
-import com.eveningoutpost.dexdrip.Services.PlusSyncService;
-import com.eveningoutpost.dexdrip.UtilityModels.CollectionServiceStarter;
-import com.eveningoutpost.dexdrip.UtilityModels.IdempotentMigrations;
-import com.eveningoutpost.dexdrip.UtilityModels.PlusAsyncExecutor;
+import com.eveningoutpost.dexdrip.models.AlertType;
+import com.eveningoutpost.dexdrip.models.JoH;
+import com.eveningoutpost.dexdrip.models.Reminder;
+import com.eveningoutpost.dexdrip.alert.Poller;
+import com.eveningoutpost.dexdrip.services.ActivityRecognizedService;
+import com.eveningoutpost.dexdrip.services.BluetoothGlucoseMeter;
+import com.eveningoutpost.dexdrip.services.MissedReadingService;
+import com.eveningoutpost.dexdrip.services.PlusSyncService;
+import com.eveningoutpost.dexdrip.utilitymodels.BgGraphBuilder;
+import com.eveningoutpost.dexdrip.utilitymodels.CollectionServiceStarter;
+import com.eveningoutpost.dexdrip.utilitymodels.ColorCache;
+import com.eveningoutpost.dexdrip.utilitymodels.IdempotentMigrations;
+import com.eveningoutpost.dexdrip.utilitymodels.NotificationChannels;
+import com.eveningoutpost.dexdrip.utilitymodels.PlusAsyncExecutor;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
+import com.eveningoutpost.dexdrip.utilitymodels.VersionTracker;
 import com.eveningoutpost.dexdrip.calibrations.PluggableCalibration;
+import com.eveningoutpost.dexdrip.utils.SentryCrashReporting;
+import com.eveningoutpost.dexdrip.utils.jobs.DailyJob;
+import com.eveningoutpost.dexdrip.utils.jobs.XDripJobCreator;
+import com.eveningoutpost.dexdrip.watch.lefun.LeFunEntry;
+import com.eveningoutpost.dexdrip.watch.miband.MiBandEntry;
+import com.eveningoutpost.dexdrip.watch.thinjam.BlueJayEntry;
+import com.eveningoutpost.dexdrip.services.broadcastservice.BroadcastEntry;
+import com.eveningoutpost.dexdrip.wearintegration.ExternalStatusBroadcastReceiver;
+import com.eveningoutpost.dexdrip.webservices.XdripWebService;
+import com.evernote.android.job.JobManager;
+
+import net.danlew.android.joda.JodaTimeAndroid;
 
 import java.util.Locale;
 
-import io.fabric.sdk.android.Fabric;
+
 
 /**
- * Created by stephenblack on 3/21/15.
+ * Created by Emma Black on 3/21/15.
  */
 
 public class xdrip extends Application {
 
     private static final String TAG = "xdrip.java";
-    private static Context context;
+    @SuppressLint("StaticFieldLeak")
+    private static volatile Context context;
     private static boolean fabricInited = false;
+    private static boolean bfInited = false;
     private static Locale LOCALE;
     public static PlusAsyncExecutor executor;
+    public static boolean useBF = false;
+    private static Boolean isRunningTestCache;
+
+    public static void setContext(final Context context) {
+        if (context == null) return;
+        if (xdrip.context == null) {
+            xdrip.context = context.getApplicationContext();
+        }
+    }
+
+    public static void setContextAlways(final Context context) {
+        if (context == null) return;
+        Log.d(TAG, "Set context: " + context.getResources().getConfiguration().getLocales().get(0).getLanguage()
+                + " was: " + xdrip.context.getResources().getConfiguration().getLocales().get(0).getLanguage());
+        xdrip.context = context;
+    }
 
 
     @Override
     public void onCreate() {
         xdrip.context = getApplicationContext();
         super.onCreate();
+        JodaTimeAndroid.init(this);
         try {
             if (PreferenceManager.getDefaultSharedPreferences(xdrip.context).getBoolean("enable_crashlytics", true)) {
-                initCrashlytics(this);
+                SentryCrashReporting.start(this);
             }
         } catch (Exception e) {
             Log.e(TAG, e.toString());
         }
         executor = new PlusAsyncExecutor();
+
+        IdempotentMigrations.migrateOOP2CalibrationPreferences(); // needs to run before preferences get defaults
+
         PreferenceManager.setDefaultValues(this, R.xml.pref_general, true);
         PreferenceManager.setDefaultValues(this, R.xml.pref_data_sync, true);
+        PreferenceManager.setDefaultValues(this, R.xml.pref_advanced_settings, true);
         PreferenceManager.setDefaultValues(this, R.xml.pref_notifications, true);
         PreferenceManager.setDefaultValues(this, R.xml.pref_data_source, true);
         PreferenceManager.setDefaultValues(this, R.xml.xdrip_plus_defaults, true);
         PreferenceManager.setDefaultValues(this, R.xml.xdrip_plus_prefs, true);
+        ColorCache.setDefaultsLoaded();
 
         checkForcedEnglish(xdrip.context);
 
-
         JoH.ratelimit("policy-never", 3600); // don't on first load
         new IdempotentMigrations(getApplicationContext()).performAll();
-        NFCReaderX.handleHomeScreenScanPreference(getApplicationContext());
-        AlertType.fromSettings(getApplicationContext());
-        new CollectionServiceStarter(getApplicationContext()).start(getApplicationContext());
-        PlusSyncService.startSyncService(context, "xdrip.java");
-        if (Home.getPreferencesBoolean("motion_tracking_enabled", false)) {
-            ActivityRecognizedService.startActivityRecogniser(getApplicationContext());
-        }
-        PluggableCalibration.invalidateCache();
 
-    }
+        IntentFilter bgFilter = new IntentFilter();
+        bgFilter.addAction("com.eveningoutpost.dexdrip.NS_EMULATOR");
+        bgFilter.addAction("com.eveningoutpost.dexdrip.OOP2_DECODE_FARM_RESULT");
+        bgFilter.addAction("com.eveningoutpost.dexdrip.OOP2_DECODE_BLE_RESULT");
+        bgFilter.addAction("com.eveningoutpost.dexdrip.OOP2_BLUETOOTH_ENABLE_RESULT");
 
-    public synchronized static void initCrashlytics(Context context) {
-        if (!fabricInited) {
-            try {
-                Crashlytics crashlyticsKit = new Crashlytics.Builder()
-                        .core(new CrashlyticsCore.Builder().disabled(BuildConfig.DEBUG).build())
-                        .build();
-                Fabric.with(context, crashlyticsKit);
-            } catch (Exception e) {
-                Log.e(TAG, e.toString());
+        registerReceiver(new NSEmulatorReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.getComponent() != null) return; // Ignore Explicit (Manifest handles it)
+                super.onReceive(context, intent);
             }
-            fabricInited = true;
+        }, bgFilter);
+
+        registerReceiver(new ExternalStatusBroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.getComponent() != null) return; // Ignore Explicit
+                super.onReceive(context, intent);
+            }
+        }, new IntentFilter("com.eveningoutpost.dexdrip.ExternalStatusline"));
+
+        JobManager.create(this).addJobCreator(new XDripJobCreator());
+        DailyJob.schedule();
+        //SyncService.startSyncServiceSoon();
+
+        if (!isRunningTest()) {
+            MissedReadingService.delayedLaunch();
+            NFCReaderX.handleHomeScreenScanPreference(getApplicationContext());
+            AlertType.fromSettings(getApplicationContext());
+            //new CollectionServiceStarter(getApplicationContext()).start(getApplicationContext());
+            CollectionServiceStarter.restartCollectionServiceBackground();
+            PlusSyncService.startSyncService(context, "xdrip.java");
+            if (Pref.getBoolean("motion_tracking_enabled", false)) {
+                ActivityRecognizedService.startActivityRecogniser(getApplicationContext());
+            }
+            BluetoothGlucoseMeter.startIfEnabled();
+            LeFunEntry.initialStartIfEnabled();
+            MiBandEntry.initialStartIfEnabled();
+            BroadcastEntry.initialStartIfEnabled();
+            BlueJayEntry.initialStartIfEnabled();
+            XdripWebService.immortality();
+            VersionTracker.updateDevice();
+
+        } else {
+            Log.d(TAG, "Detected running test mode, holding back on background processes");
+        }
+        Reminder.firstInit(xdrip.getAppContext());
+        PluggableCalibration.invalidateCache();
+        Poller.init();
+        BgGraphBuilder.setLogging();
+        NotificationChannels.setupAllChannels(); // Create all notification channels that do not need to be created dynamically
+    }
+
+
+    public static synchronized boolean isRunningTest() {
+        if (null == isRunningTestCache) {
+            boolean test_framework;
+            if ("robolectric".equals(Build.FINGERPRINT)) {
+                isRunningTestCache = true;
+            } else {
+                try {
+                    Class.forName("android.support.test.espresso.Espresso");
+                    test_framework = true;
+                } catch (ClassNotFoundException e) {
+                    test_framework = false;
+                }
+                isRunningTestCache = test_framework;
+            }
+        }
+        return isRunningTestCache;
+    }
+
+    public synchronized static void initBF() {
+        try {
+            if (PreferenceManager.getDefaultSharedPreferences(xdrip.context).getBoolean("enable_bugfender", false)) {
+                new Thread() {
+                    @Override
+                    public void run() {
+                        String app_id = PreferenceManager.getDefaultSharedPreferences(xdrip.context).getString("bugfender_appid", "").trim();
+                        if (!useBF && (app_id.length() > 10)) {
+                            if (!bfInited) {
+                                //Bugfender.init(xdrip.context, app_id, BuildConfig.DEBUG);
+                                bfInited = true;
+                            }
+                            useBF = true;
+                        }
+                    }
+                }.start();
+            } else {
+                useBF = false;
+            }
+        } catch (Exception e) {
+            //
         }
     }
+
 
     public static Context getAppContext() {
         return xdrip.context;
@@ -97,25 +219,65 @@ public class xdrip extends Application {
     }
 
     public static void checkForcedEnglish(Context context) {
-        //    if (Locale.getDefault() != Locale.ENGLISH) {
-        //       Log.d(TAG, "Locale is non-english");
-        if (Home.getPreferencesBoolean("force_english", false)) {
-            final String forced_language = Home.getPreferencesStringWithDefault("forced_language", "en");
+        if (Pref.getBoolean("force_english", false)) {
+            final String forced_language = Pref.getString("forced_language", "en");
             final String current_language = Locale.getDefault().getLanguage();
             if (!current_language.equals(forced_language)) {
                 Log.i(TAG, "Forcing locale: " + forced_language + " was: " + current_language);
                 LOCALE = new Locale(forced_language, "", "");
                 Locale.setDefault(LOCALE);
-                Configuration config = context.getResources().getConfiguration();
-                config.locale = LOCALE;
+                final Configuration config = context.getResources().getConfiguration();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    config.setLocale(LOCALE);
+                } else {
+                    config.locale = LOCALE;
+                }
                 try {
                     ((Application) context).getBaseContext().getResources().updateConfiguration(config, ((Application) context).getBaseContext().getResources().getDisplayMetrics());
                 } catch (ClassCastException e) {
-                    Log.i(TAG, "Using activity context instead of base for Locale change");
-                    context.getResources().updateConfiguration(config, context.getResources().getDisplayMetrics());
+                    //
                 }
-            } Log.d(TAG,"Already set to locale: " + forced_language);
+                try {
+                    context.getResources().updateConfiguration(config, context.getResources().getDisplayMetrics());
+                } catch (ClassCastException e) {
+                    //
+
+                }
+            }
+            Log.d(TAG, "Already set to locale: " + forced_language);
         }
     }
+
+    // force language on oreo activities
+    public static Context getLangContext(Context context) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && Pref.getBooleanDefaultFalse("force_english")) {
+                final String forced_language = Pref.getString("forced_language", "en");
+                final Configuration config = context.getResources().getConfiguration();
+
+                if (LOCALE == null) LOCALE = new Locale(forced_language);
+                Locale.setDefault(LOCALE);
+                config.setLocale(LOCALE);
+                context = context.createConfigurationContext(config);
+                //Log.d(TAG, "Sending language context for: " + LOCALE);
+                return new ContextWrapper(context);
+            } else {
+                return context;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Got exception in getLangContext: " + e);
+            return context;
+        }
+    }
+
+
+    public static String gs(@StringRes final int id) {
+        return getAppContext().getString(id);
+    }
+
+    public static String gs(@StringRes final int id, String... args) {
+        return getAppContext().getString(id, (Object[]) args);
+    }
+
     //}
 }

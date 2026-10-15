@@ -9,19 +9,20 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.eveningoutpost.dexdrip.ShareModels.Models.ExistingFollower;
-import com.eveningoutpost.dexdrip.ShareModels.ShareRest;
-import com.squareup.okhttp.ResponseBody;
+import com.eveningoutpost.dexdrip.sharemodels.models.ExistingFollower;
+import com.eveningoutpost.dexdrip.sharemodels.ShareRest;
+import okhttp3.ResponseBody;
 
 import java.util.List;
 
-import retrofit.Callback;
-import retrofit.Response;
-import retrofit.Retrofit;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 /**
- * Created by stephenblack on 8/11/15.
+ * Created by Emma Black on 8/11/15.
  */
+import static com.eveningoutpost.dexdrip.xdrip.gs;
 public class FollowerListAdapter extends BaseAdapter {
     private List<ExistingFollower> list;
     private Context context;
@@ -65,19 +66,19 @@ public class FollowerListAdapter extends BaseAdapter {
             public void onClick(View v) {
                 Callback<ResponseBody> deleteFollowerListener = new Callback<ResponseBody>() {
                     @Override
-                    public void onResponse(Response<ResponseBody> response, Retrofit retrofit) {
-                        if (response.isSuccess()) {
-                            Toast.makeText(context, "Follower deleted succesfully", Toast.LENGTH_LONG).show();
+                    public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+                        if (response.isSuccessful()) {
+                            Toast.makeText(context, gs(R.string.follower_deleted_succesfully), Toast.LENGTH_LONG).show();
                             list.remove(position);
                             notifyDataSetChanged();
                         } else {
-                            Toast.makeText(context, "Failed to delete follower", Toast.LENGTH_LONG).show();
+                            Toast.makeText(context, gs(R.string.failed_to_delete_follower), Toast.LENGTH_LONG).show();
                         }
                     }
 
                     @Override
-                    public void onFailure(Throwable t) {
-                        Toast.makeText(context, "Failed to delete follower", Toast.LENGTH_LONG).show();
+                    public void onFailure(Call<ResponseBody> call, Throwable t) {
+                        Toast.makeText(context, gs(R.string.failed_to_delete_follower), Toast.LENGTH_LONG).show();
                     }
                 };
                 shareRest.deleteContact(follower.ContactId, deleteFollowerListener);

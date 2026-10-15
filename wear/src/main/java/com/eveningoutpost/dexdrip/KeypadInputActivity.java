@@ -9,11 +9,13 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
 
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
+import com.eveningoutpost.dexdrip.models.JoH;
 
-import static com.eveningoutpost.dexdrip.ListenerService.SendData;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Adapted from WearDialer which is:
@@ -26,6 +28,7 @@ import static com.eveningoutpost.dexdrip.ListenerService.SendData;
 
 public class KeypadInputActivity extends Activity {
 
+    private final static String TAG = "jamorham " + KeypadInputActivity.class.getSimpleName();
     private TextView mDialTextView;
     private Button zeroButton, oneButton, twoButton, threeButton, fourButton, fiveButton,
             sixButton, sevenButton, eightButton, nineButton, starButton, backSpaceButton;
@@ -270,17 +273,25 @@ public class KeypadInputActivity extends Activity {
         updateTab();
     }
 
+    private String getTime() {
+        final Calendar c = Calendar.getInstance();
+        final SimpleDateFormat simpleDateFormat1 = new SimpleDateFormat("HH.mm", Locale.US);
+        final String datenew = simpleDateFormat1.format(c.getTime());
+        return datenew;
+    }
 
     private void submitAll() {
 
         String mystring = "";
-        mystring += (getValue("time").length() > 0) ? getValue("time") + " time " : "";
+        mystring += (JoH.tsl()/1000)+" watchkeypad ";
+        mystring += (getValue("time").length() > 0) ? getValue("time") + " time " : getTime() + " time ";
         mystring += (getValue("bloodtest").length() > 0) ? getValue("bloodtest") + " blood " : "";
-        mystring += (getValue("carbs").length() > 0) ? getValue("carbs") + " carbs " : "";
-        mystring += (getValue("insulin").length() > 0) ? getValue("insulin") + " units " : "";
+        mystring += (getValue("carbs").length() > 0) ? (!getValue("carbs").equals("0") ? getValue("carbs") + " g carbs " : "") : "";
+        mystring += (getValue("insulin").length() > 0) ? (!getValue("insulin").equals("0") ? getValue("insulin") + " units " : "") : "";
 
         if (mystring.length() > 1) {
-            SendData(this, WEARABLE_VOICE_PAYLOAD, mystring.getBytes(StandardCharsets.UTF_8));
+            ListenerService.sendTreatment(mystring);
+            //SendData(this, WEARABLE_VOICE_PAYLOAD, mystring.getBytes(StandardCharsets.UTF_8));
             finish();
         }
     }
@@ -306,7 +317,7 @@ public class KeypadInputActivity extends Activity {
                 break;
             case "carbs":
                 carbstabbutton.setBackgroundColor(onColor);
-                append = " carbs";
+                append = "g carbs";
                 break;
             case "bloodtest":
                 bloodtesttabbutton.setBackgroundColor(onColor);
@@ -376,6 +387,7 @@ public class KeypadInputActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        finish();
         /*Wearable.MessageApi.removeListener(mApiClient, new MessageApi.MessageListener() {
             @Override
             public void onMessageReceived(MessageEvent messageEvent) {

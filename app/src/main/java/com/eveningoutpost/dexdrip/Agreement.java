@@ -3,15 +3,14 @@ package com.eveningoutpost.dexdrip;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
-import android.support.v7.app.AppCompatActivity;
+import androidx.preference.PreferenceManager;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 
-import com.eveningoutpost.dexdrip.Models.JoH;
+import com.eveningoutpost.dexdrip.models.JoH;
 
-public class Agreement extends AppCompatActivity {
+public class Agreement extends BaseAppCompatActivity {
 
     final static String prefmarker = "warning_agreed_to";
     boolean IUnderstand;
@@ -30,6 +29,9 @@ public class Agreement extends AppCompatActivity {
         agreeCheckBox.setChecked(IUnderstand);
         saveButton = (Button) findViewById(R.id.saveButton2);
         addListenerOnButton();
+        if (xdrip.isRunningTest()) {
+            findViewById(R.id.scrollView6).setScrollBarFadeDuration(100); // avoid espresso lameness
+        }
     }
 
     public void addListenerOnButton() {

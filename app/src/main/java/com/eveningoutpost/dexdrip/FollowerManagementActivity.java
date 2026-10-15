@@ -1,9 +1,7 @@
 package com.eveningoutpost.dexdrip;
 
 import android.app.Dialog;
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.WindowManager;
@@ -12,19 +10,19 @@ import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 
-import com.eveningoutpost.dexdrip.ShareModels.Models.ExistingFollower;
-import com.eveningoutpost.dexdrip.ShareModels.Models.InvitationPayload;
-import com.eveningoutpost.dexdrip.ShareModels.ShareRest;
+import com.eveningoutpost.dexdrip.sharemodels.models.ExistingFollower;
+import com.eveningoutpost.dexdrip.sharemodels.models.InvitationPayload;
+import com.eveningoutpost.dexdrip.sharemodels.ShareRest;
 import com.eveningoutpost.dexdrip.utils.ActivityWithMenu;
 
 import java.util.List;
 
-import retrofit.Callback;
-import retrofit.Response;
-import retrofit.Retrofit;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 /**
- * Created by stephenblack on 8/11/15.
+ * Created by Emma Black on 8/11/15.
  */
 public class FollowerManagementActivity extends ActivityWithMenu {
     private static final String menu_name = "Follower Management";
@@ -53,8 +51,6 @@ public class FollowerManagementActivity extends ActivityWithMenu {
     @Override
     protected void onResume() {
         super.onResume();
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-
         populateFollowerList();
         setInviteListener();
     }
@@ -62,7 +58,7 @@ public class FollowerManagementActivity extends ActivityWithMenu {
     private void populateFollowerList() {
         existingFollowerListener = new Callback<List<ExistingFollower>>() {
             @Override
-            public void onResponse(Response<List<ExistingFollower>> response, Retrofit retrofit) {
+            public void onResponse(Call<List<ExistingFollower>> call, Response<List<ExistingFollower>> response) {
                 List<ExistingFollower> existingFollowers = response.body();
                 if (followerListAdapter != null) {
                     existingFollowerList.clear();
@@ -79,7 +75,7 @@ public class FollowerManagementActivity extends ActivityWithMenu {
             }
 
             @Override
-            public void onFailure(Throwable t) {
+            public void onFailure(Call<List<ExistingFollower>> call, Throwable t) {
                 // If it fails, don't show followers.
             }
         };
@@ -109,12 +105,12 @@ public class FollowerManagementActivity extends ActivityWithMenu {
                             shareRest.createContact(followerName.getText().toString().trim(), followerEmail.getText().toString().trim(), new Callback<String>() {
 
                                         @Override
-                                        public void onResponse(Response<String> response, Retrofit retrofit) {
-                                            if (response.isSuccess()) {
+                                        public void onResponse(Call<String> call, Response<String> response) {
+                                            if (response.isSuccessful()) {
                                                 shareRest.createInvitationForContact(response.body(), new InvitationPayload(followerNicName.getText().toString().trim()), new Callback<String>() {
                                                     @Override
-                                                    public void onResponse(Response<String> response, Retrofit retrofit) {
-                                                        if (response.isSuccess()) {
+                                                    public void onResponse(Call<String> call, Response<String> response) {
+                                                        if (response.isSuccessful()) {
                                                             populateFollowerList();
                                                             Toast.makeText(getApplicationContext(), "Follower invite sent succesfully", Toast.LENGTH_LONG).show();
                                                         } else {
@@ -123,7 +119,7 @@ public class FollowerManagementActivity extends ActivityWithMenu {
                                                     }
 
                                                     @Override
-                                                    public void onFailure(Throwable t) {
+                                                    public void onFailure(Call<String> call, Throwable t) {
                                                         Toast.makeText(getApplicationContext(), "Failed to invite follower", Toast.LENGTH_LONG).show();
                                                     }
                                                 });
@@ -133,7 +129,7 @@ public class FollowerManagementActivity extends ActivityWithMenu {
                                         }
 
                                         @Override
-                                        public void onFailure(Throwable t) {
+                                        public void onFailure(Call<String> call, Throwable t) {
                                             Toast.makeText(getApplicationContext(), "Failed to invite follower", Toast.LENGTH_LONG).show();
                                         }
                                     }

@@ -1,21 +1,25 @@
 package com.eveningoutpost.dexdrip;
 
 import android.content.SharedPreferences;
-import android.graphics.Color;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StrikethroughSpan;
 import android.util.Log;
 
-import com.eveningoutpost.dexdrip.Models.BgReading;
-import com.eveningoutpost.dexdrip.Models.JoH;
-import com.eveningoutpost.dexdrip.UtilityModels.BgGraphBuilder;
+import com.eveningoutpost.dexdrip.models.BgReading;
+import com.eveningoutpost.dexdrip.models.JoH;
+import com.eveningoutpost.dexdrip.models.SensorSanity;
+import com.eveningoutpost.dexdrip.models.UserError;
+import com.eveningoutpost.dexdrip.utilitymodels.BgGraphBuilder;
+import com.eveningoutpost.dexdrip.utilitymodels.ColorCache;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
 import com.eveningoutpost.dexdrip.calibrations.CalibrationAbstract;
 import com.eveningoutpost.dexdrip.utils.DexCollectionType;
 
 import java.util.List;
 
+import static com.eveningoutpost.dexdrip.utilitymodels.ColorCache.getCol;
 import static com.eveningoutpost.dexdrip.calibrations.PluggableCalibration.getCalibrationPluginFromPreferences;
 
 /**
@@ -39,10 +43,12 @@ public class BestGlucose {
         private Boolean stale = null;
         private Double highMark = null;
         private Double lowMark = null;
-
+        public boolean doMgDl = true; // mgdl/mmol
         public double mgdl = -1;    // displayable mgdl figure
         public double unitized_value = -1; // in local units
         public double delta_mgdl = 0; // displayable delta mgdl figure
+        public double slope = 0; // slope metric mgdl/ms
+        public double noise = -1; // noise value
         public int warning = -1;  // warning level
         public long mssince = -1;
         public long timestamp = -1; // timestamp of reading
@@ -75,17 +81,23 @@ public class BestGlucose {
             return this.stale;
         }
 
+        // return boolean if data would be considered stale
+        public boolean isReallyStale() {
+                return this.mssince > (Home.stale_data_millis()*3);
+        }
+
+
         // is this value above the "High" preference value
         public boolean isHigh() {
             if (this.highMark == null)
-                this.highMark = JoH.tolerantParseDouble(prefs.getString("highValue", "170"));
+                this.highMark = JoH.tolerantParseDouble(prefs.getString("highValue", "170"), 170d);
             return this.unitized_value >= this.highMark;
         }
 
         // is this value below the "Low" preference value
         public boolean isLow() {
             if (this.lowMark == null)
-                this.lowMark = JoH.tolerantParseDouble(prefs.getString("lowValue", "70"));
+                this.lowMark = JoH.tolerantParseDouble(prefs.getString("lowValue", "70"), 70d);
             return this.unitized_value <= this.lowMark;
         }
 
@@ -100,11 +112,12 @@ public class BestGlucose {
             if (isStale()) wholeSpan(ret, new StrikethroughSpan());
             if (color) {
                 if (isLow()) {
-                    // TODO should colors be configurable?
-                    wholeSpan(ret, new ForegroundColorSpan(Color.parseColor("#C30909")));
+                    wholeSpan(ret, new ForegroundColorSpan(getCol(ColorCache.X.color_low_bg_values)));
                 } else if (isHigh()) {
-                    wholeSpan(ret, new ForegroundColorSpan(Color.parseColor("#FFBB33")));
-                } // else default to whatever default is?
+                    wholeSpan(ret, new ForegroundColorSpan(getCol(ColorCache.X.color_high_bg_values)));
+                } else {
+                    wholeSpan(ret, new ForegroundColorSpan(getCol(ColorCache.X.color_inrange_bg_values)));
+                }
             }
             return ret;
         }
@@ -112,6 +125,10 @@ public class BestGlucose {
         // set the whole spannable string to whatever this span is
         private void wholeSpan(SpannableString ret, Object what) {
             ret.setSpan(what, 0, ret.length(), 0);
+        }
+
+        public String humanSummary() {
+            return unitized + " " + (doMgDl ? "mg/dl" : "mmol/l") + (isStale() ? ", " + minutesAgo(true).toLowerCase() : "");
         }
 
     }
@@ -124,6 +141,7 @@ public class BestGlucose {
     // TODO see getSlopeArrowSymbolBeforeCalibration for calculation method for arbitary slope
     // TODO option to process noise or not
     // TODO check what happens if there is only a single entry, especially regarding delta
+    // TODO select by time
 
 
     public static DisplayGlucose getDisplayGlucose() {
@@ -133,6 +151,8 @@ public class BestGlucose {
         final DisplayGlucose dg = new DisplayGlucose(); // return value
         final boolean doMgdl = (prefs.getString("units", "mgdl").equals("mgdl"));
         final boolean is_follower = Home.get_follower();
+
+        dg.doMgDl = doMgdl;
 
         List<BgReading> last_2 = BgReading.latest(2);
 
@@ -164,7 +184,7 @@ public class BestGlucose {
         dg.timestamp = lastBgReading.timestamp;
 
         // if we are actively using a plugin, get the glucose calculation from there
-        if ((plugin != null) && ((pcalibration = plugin.getCalibrationData()) != null) && (Home.getPreferencesBoolean("display_glucose_from_plugin", false))) {
+        if ((plugin != null) && ((pcalibration = plugin.getCalibrationData()) != null) && (Pref.getBoolean("display_glucose_from_plugin", false))) {
             dg.plugin_name = plugin.getAlgorithmName();
             Log.d(TAG, "Using plugin: " + dg.plugin_name);
             dg.from_plugin = true;
@@ -187,6 +207,7 @@ public class BestGlucose {
 
         // TODO refresh bggraph if needed based on cache - observe
         BgGraphBuilder.refreshNoiseIfOlderThan(dg.timestamp); // should this be conditional on whether bg_compensate_noise is set?
+        dg.noise = BgGraphBuilder.last_noise;
 
         boolean bg_from_filtered = prefs.getBoolean("bg_from_filtered", false);
         // if noise has settled down then switch off filtered mode
@@ -196,17 +217,15 @@ public class BestGlucose {
         }
 
         // TODO Noise uses plugin in bggraphbuilder
-        if ((BgGraphBuilder.last_noise > BgGraphBuilder.NOISE_TRIGGER)
-                && (BgGraphBuilder.best_bg_estimate > 0)
-                && (BgGraphBuilder.last_bg_estimate > 0)
-                && (prefs.getBoolean("bg_compensate_noise", false))) {
+        if (compensateNoise()) {
             estimate = BgGraphBuilder.best_bg_estimate; // this maybe needs scaling based on noise intensity
             estimated_delta = BgGraphBuilder.best_bg_estimate - BgGraphBuilder.last_bg_estimate;
             // TODO handle ratio when period is not dexcom period?
             double estimated_delta_by_minute = estimated_delta / (BgGraphBuilder.DEXCOM_PERIOD / 60000);
-            dg.unitized_delta_no_units = BgGraphBuilder.unitizedDeltaStringRaw(false, true, estimated_delta_by_minute, doMgdl);
+            dg.slope = estimated_delta_by_minute / 60000;
+            dg.unitized_delta_no_units = BgGraphBuilder.unitizedDeltaStringRaw(false, true, estimated_delta, doMgdl);
             // TODO optimize adding units
-            dg.unitized_delta = BgGraphBuilder.unitizedDeltaStringRaw(true, true, estimated_delta_by_minute, doMgdl);
+            dg.unitized_delta = BgGraphBuilder.unitizedDeltaStringRaw(true, true, estimated_delta, doMgdl);
             slope_arrow = BgReading.slopeToArrowSymbol(estimated_delta_by_minute); // delta by minute
             slope_name = BgReading.slopeName(estimated_delta_by_minute);
             extrastring = "\u26A0"; // warning symbol !
@@ -227,9 +246,10 @@ public class BestGlucose {
             if (time_delta < 0) Log.wtf(TAG, "Time delta is negative! : " + time_delta);
             //slope_arrow = lastBgReading.slopeArrow(); // internalize this for plugins
             double slope = calculateSlope(estimate, timestamp, previous_estimate, previous_timestamp);
+            dg.slope = slope;
             slope_arrow = BgReading.slopeToArrowSymbol(slope * 60000); // slope by minute
             slope_name = BgReading.slopeName(slope * 60000);
-            Log.d(TAG, "No noise option slope by minute: " + (slope * 60000));
+            Log.d(TAG, "No noise option slope by minute: " + JoH.qs(slope * 60000, 5));
         }
 
         // TODO bit more work on deltas etc needed here
@@ -253,9 +273,35 @@ public class BestGlucose {
         dg.extra_string = extrastring;
         dg.delta_name = slope_name;
 
+        // fail safe for excessive raw data values - this may want
+        // to be moved one day
+        if (!SensorSanity.isRawValueSane(lastBgReading.raw_data)) {
+            dg.delta_arrow = "!";
+            dg.unitized = ">!?";
+            dg.mgdl = 0;
+            dg.delta_mgdl = 0;
+            dg.unitized_value = 0;
+            dg.unitized_delta = "";
+            dg.slope = 0;
+            if (JoH.ratelimit("exceeding_max_raw", 120)) {
+                UserError.Log.wtf(TAG, "Failing raw bounds validation: " + lastBgReading.raw_data);
+            }
+        }
+
         if (d)
             Log.d(TAG, "dg result: " + dg.unitized + " previous: " + BgGraphBuilder.unitized_string(previous_estimate, doMgdl));
         return dg;
+    }
+
+    public static boolean compensateNoise() {
+        return (BgGraphBuilder.last_noise > BgGraphBuilder.NOISE_TRIGGER
+                || (BgGraphBuilder.last_noise > BgGraphBuilder.NOISE_TRIGGER_ULTRASENSITIVE
+                        && Pref.getBooleanDefaultFalse("engineering_mode")
+                        && Pref.getBooleanDefaultFalse("bg_compensate_noise_ultrasensitive")
+                ))
+                && (BgGraphBuilder.best_bg_estimate > 0)
+                && (BgGraphBuilder.last_bg_estimate > 0)
+                && (prefs.getBoolean("bg_compensate_noise", false));
     }
 
     public static String unitizedDeltaString(boolean showUnit, boolean highGranularity, boolean doMgdl, double value1, long timestamp1, double value2, long timestamp2) {
@@ -274,7 +320,7 @@ public class BestGlucose {
         return BgGraphBuilder.unitizedDeltaStringRaw(showUnit, highGranularity, value, doMgdl);
     }
 
-    public static double calculateSlope(double value1, long timestamp1, double value2, long timestamp2) {
+    private static double calculateSlope(double value1, long timestamp1, double value2, long timestamp2) {
         if (timestamp1 == timestamp2 || value1 == value2) {
             return 0;
         } else {

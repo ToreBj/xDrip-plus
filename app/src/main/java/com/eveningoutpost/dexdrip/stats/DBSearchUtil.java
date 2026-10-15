@@ -4,15 +4,15 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.preference.PreferenceManager;
+import androidx.preference.PreferenceManager;
 
-import com.eveningoutpost.dexdrip.Models.JoH;
-import com.eveningoutpost.dexdrip.Models.UserError.Log;
+import com.eveningoutpost.dexdrip.models.JoH;
+import com.eveningoutpost.dexdrip.models.UserError.Log;
 
 import com.activeandroid.Cache;
 import com.activeandroid.query.Select;
-import com.eveningoutpost.dexdrip.Models.BgReading;
-import com.eveningoutpost.dexdrip.UtilityModels.Constants;
+import com.eveningoutpost.dexdrip.models.BgReading;
+import com.eveningoutpost.dexdrip.utilitymodels.Constants;
 
 import java.util.Calendar;
 import java.util.GregorianCalendar;
@@ -24,7 +24,7 @@ import java.util.Vector;
  */
 public class DBSearchUtil {
 
-    public static final String CUTOFF = "39";
+    public static final String CUTOFF = "38";
 
 
     public static int noReadingsAboveRange(Context context) {
@@ -65,6 +65,36 @@ public class DBSearchUtil {
                     reading = new BgReadingStats();
                     reading.timestamp = (Long.parseLong(cur.getString(0)));
                     reading.calculated_value = (Double.parseDouble(cur.getString(1)));
+                    readings.add(reading);
+                } while (cur.moveToNext());
+            }
+            return readings;
+
+        } catch (Exception e) {
+            JoH.static_toast_long(e.getMessage());
+            return null;
+        }
+    }
+
+    public static List<BgReadingStats> getFilteredReadingsWithFallback(boolean ordered) {
+        try {
+            Bounds bounds = new Bounds().invoke();
+
+            String orderBy = ordered ? "calculated_value desc" : null;
+
+            SQLiteDatabase db = Cache.openDatabase();
+            Cursor cur = db.query("bgreadings", new String[]{"timestamp", "calculated_value", "filtered_calculated_value"}, "timestamp >= ? AND timestamp <=  ? AND calculated_value > ? AND snyced == 0", new String[]{"" + bounds.start, "" + bounds.stop, CUTOFF}, null, null, orderBy);
+            List<BgReadingStats> readings = new Vector<BgReadingStats>();
+            BgReadingStats reading;
+            if (cur.moveToFirst()) {
+                do {
+                    reading = new BgReadingStats();
+                    reading.timestamp = (Long.parseLong(cur.getString(0)));
+
+                    reading.calculated_value = (Double.parseDouble(cur.getString(2)));
+                    if(reading.calculated_value == 0)
+                        reading.calculated_value = (Double.parseDouble(cur.getString(1)));
+
                     readings.add(reading);
                 } while (cur.moveToNext());
             }

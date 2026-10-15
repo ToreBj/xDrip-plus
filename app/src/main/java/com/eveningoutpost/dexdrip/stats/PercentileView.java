@@ -9,15 +9,17 @@ import android.graphics.CornerPathEffect;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.preference.PreferenceManager;
 import android.util.DisplayMetrics;
 
-import com.eveningoutpost.dexdrip.Home;
-import com.eveningoutpost.dexdrip.Models.UserError.Log;
+import androidx.core.content.ContextCompat;
+import androidx.preference.PreferenceManager;
+
+import com.eveningoutpost.dexdrip.models.UserError.Log;
 import android.view.View;
 
 import com.eveningoutpost.dexdrip.R;
-import com.eveningoutpost.dexdrip.UtilityModels.Constants;
+import com.eveningoutpost.dexdrip.utilitymodels.Constants;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
 
 import java.util.Calendar;
 import java.util.Collections;
@@ -47,40 +49,40 @@ public class PercentileView extends View {
 
         float textSize = dp2px(14);
         outerPaint = new Paint();
-        outerPaint.setColor(resources.getColor(R.color.percentile_outer));
+        outerPaint.setColor(ContextCompat.getColor(getContext(), R.color.percentile_outer));
         outerPaint.setStyle(Paint.Style.FILL_AND_STROKE);
         outerPaint.setPathEffect(new CornerPathEffect(dp2px(10)));
         outerPaint.setStrokeWidth(dp2px(1));
 
 
         outerPaintLabel = new Paint();
-        outerPaintLabel.setColor(resources.getColor(R.color.percentile_outer));
+        outerPaintLabel.setColor(ContextCompat.getColor(getContext(), R.color.percentile_outer));
         outerPaintLabel.setStyle(Paint.Style.FILL_AND_STROKE);
         outerPaintLabel.setPathEffect(new CornerPathEffect(dp2px(10)));
         outerPaintLabel.setTextSize(textSize);
 
         innerPaint = new Paint();
-        innerPaint.setColor(resources.getColor(R.color.percentile_inner));
+        innerPaint.setColor(ContextCompat.getColor(getContext(), R.color.percentile_inner));
         innerPaint.setStyle(Paint.Style.FILL_AND_STROKE);
         innerPaint.setPathEffect(new CornerPathEffect(dp2px(10)));
         innerPaint.setStrokeWidth(dp2px(1));
 
         innerPaintLabel = new Paint();
-        innerPaintLabel.setColor(resources.getColor(R.color.percentile_inner));
+        innerPaintLabel.setColor(ContextCompat.getColor(getContext(), R.color.percentile_inner));
         innerPaintLabel.setStyle(Paint.Style.FILL_AND_STROKE);
         innerPaintLabel.setPathEffect(new CornerPathEffect(dp2px(10)));
         innerPaintLabel.setTextSize(textSize);
 
 
         medianPaint = new Paint();
-        medianPaint.setColor(resources.getColor(R.color.percentile_median));
+        medianPaint.setColor(ContextCompat.getColor(getContext(), R.color.percentile_median));
         medianPaint.setStyle(Paint.Style.STROKE);
         medianPaint.setPathEffect(new CornerPathEffect(dp2px(10)));
         medianPaint.setStrokeWidth(dp2px(1));
 
 
         medianPaintLabel = new Paint();
-        medianPaintLabel.setColor(resources.getColor(R.color.percentile_median));
+        medianPaintLabel.setColor(ContextCompat.getColor(getContext(), R.color.percentile_median));
         medianPaintLabel.setStyle(Paint.Style.STROKE);
         medianPaintLabel.setPathEffect(new CornerPathEffect(dp2px(10)));
         medianPaintLabel.setTextSize(textSize);
@@ -128,7 +130,7 @@ public class PercentileView extends View {
         Paint myPaint = new Paint();
         myPaint.setStyle(Paint.Style.STROKE);
         myPaint.setAntiAlias(false);
-        if (Home.getPreferencesBooleanDefaultFalse(StatsActivity.SHOW_STATISTICS_PRINT_COLOR)) {
+        if (Pref.getBooleanDefaultFalse(StatsActivity.SHOW_STATISTICS_PRINT_COLOR)) {
             myPaint.setColor(Color.BLACK);
         } else {
             myPaint.setColor(Color.LTGRAY);
@@ -138,7 +140,7 @@ public class PercentileView extends View {
         Paint myPaintText = new Paint();
         myPaintText.setStyle(Paint.Style.STROKE);
         myPaintText.setAntiAlias(false);
-        if (Home.getPreferencesBooleanDefaultFalse(StatsActivity.SHOW_STATISTICS_PRINT_COLOR)) {
+        if (Pref.getBooleanDefaultFalse(StatsActivity.SHOW_STATISTICS_PRINT_COLOR)) {
             myPaintText.setColor(Color.BLACK);
         } else {
             myPaintText.setColor(Color.LTGRAY);
@@ -259,7 +261,8 @@ public class PercentileView extends View {
                 @Override
                 public void run() {
                     super.run();
-                    List<BgReadingStats> readings = DBSearchUtil.getReadings(false);
+                    final List<BgReadingStats> readings = DBSearchUtil.getReadings(false);
+                    if (readings == null) return;
                     int day = 1000 * 60 * 60 * 24;
 
                     int timeslot = day / NO_TIMESLOTS;

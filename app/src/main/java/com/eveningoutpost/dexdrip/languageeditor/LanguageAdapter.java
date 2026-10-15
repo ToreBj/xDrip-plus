@@ -3,7 +3,7 @@ package com.eveningoutpost.dexdrip.languageeditor;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Color;
-import android.support.v7.widget.RecyclerView;
+
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -15,10 +15,12 @@ import android.widget.ImageButton;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
-import com.eveningoutpost.dexdrip.Models.JoH;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.eveningoutpost.dexdrip.models.JoH;
 import com.eveningoutpost.dexdrip.R;
-import com.eveningoutpost.dexdrip.UtilityModels.JamorhamShowcaseDrawer;
-import com.eveningoutpost.dexdrip.UtilityModels.ShotStateStore;
+import com.eveningoutpost.dexdrip.utilitymodels.JamorhamShowcaseDrawer;
+import com.eveningoutpost.dexdrip.utilitymodels.ShotStateStore;
 import com.github.amlcurran.showcaseview.ShowcaseView;
 import com.github.amlcurran.showcaseview.targets.ViewTarget;
 
@@ -28,7 +30,8 @@ import java.util.List;
  * Created by jamorham on 04/07/2016.
  */
 
-
+// TODO Due for deletion - will no longer function
+@Deprecated
 public class LanguageAdapter extends RecyclerView.Adapter<LanguageAdapter.MyViewHolder> {
 
     private static final String TAG = "jamorhamlang";
@@ -63,6 +66,18 @@ public class LanguageAdapter extends RecyclerView.Adapter<LanguageAdapter.MyView
         }
     }
 
+    private void informThisRowChanged(MyViewHolder holder, TextView v) {
+        final int pos = holder.getAdapterPosition();
+        try {
+            Log.d(TAG, "informThisRowChanged: " + pos);
+            if (pos > -1) {
+                LanguageAdapter.this.notifyItemChanged(pos, new LanguageItem(languageList.get(pos).item_name, languageList.get(pos).english_text, v.getText().toString().replace(" ^ ", "\n")));
+            }
+        } catch (IllegalStateException e) {
+            Log.d(TAG,"informThisRowChanged - cannot calculate during scroll");
+        }
+    }
+
     @Override
     public MyViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
         View itemView = LayoutInflater.from(parent.getContext())
@@ -87,12 +102,19 @@ public class LanguageAdapter extends RecyclerView.Adapter<LanguageAdapter.MyView
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 boolean handled = false;
                 if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    final int pos = holder.getAdapterPosition();
-                    LanguageAdapter.this.notifyItemChanged(pos, new LanguageItem(languageList.get(pos).item_name, languageList.get(pos).english_text, v.getText().toString().replace(" ^ ","\n")));
-                }
+                 informThisRowChanged(holder, v);
+                     }
                 return handled;
             }
         });
+
+        holder.local_text.setOnFocusChangeListener((v, hasFocus) -> {
+           if (hasFocus == false) {
+               informThisRowChanged(holder, (TextView)v);
+           }
+        });
+
+
 
      /*   holder.local_text.addTextChangedListener(new TextWatcher() {
             @Override
@@ -124,74 +146,7 @@ public class LanguageAdapter extends RecyclerView.Adapter<LanguageAdapter.MyView
 
     @Override
     public void onBindViewHolder(final MyViewHolder holder, int position) {
-        final LanguageItem languageItem = languageList.get(position);
-        holder.position = position;
 
-
-        holder.english_text.setText(languageItem.english_text);
-
-
-        holder.local_text.setText(languageItem.local_text.replace("\n", " ^ "));
-        holder.id_text.setText(languageItem.item_name);
-
-
-        if (languageItem.customized) {
-            holder.local_text.setTextColor(Color.parseColor("#d6a5a7"));
-            holder.elementUndo.setVisibility(View.VISIBLE);
-
-            // optimize with flag
-            if (!showcased_undo) {
-                if (JoH.ratelimit("language-showcase", 2)) {
-                    if (!ShotStateStore.hasShot(LanguageEditor.SHOWCASE_LANGUAGE_ELEMENT_UNDO)) {
-                        ShowcaseView myShowcase = new ShowcaseView.Builder((Activity) context)
-
-                                .setTarget(new ViewTarget(holder.elementUndo))
-                                .setStyle(R.style.CustomShowcaseTheme2)
-                                .setContentTitle("Item Undo Button") // always in english
-                                .setContentText("\n" + "You can Undo a single change by Long-pressing the Undo button.") // always in english
-                                .setShowcaseDrawer(new JamorhamShowcaseDrawer(context.getResources(), context.getTheme(), 90, 14))
-                                .singleShot(LanguageEditor.oneshot ? LanguageEditor.SHOWCASE_LANGUAGE_ELEMENT_UNDO : -1)
-                                .build();
-
-                        myShowcase.setBackgroundColor(Color.TRANSPARENT);
-                        myShowcase.show();
-                        showcased_undo = true;
-                    } else {
-                        showcased_undo = true;
-                    }
-                }
-            }
-
-        } else {
-            holder.local_text.setTextColor(Color.parseColor("#a5d6a7"));
-            holder.elementUndo.setVisibility(View.INVISIBLE);
-        }
-
-        if (!showcased_newline) {
-            if (LanguageEditor.last_filter.length()==0) {
-                if (holder.local_text.getText().toString().contains(" ^ ")) {
-                    if (JoH.ratelimit("language-showcase", 2)) {
-                        if (!ShotStateStore.hasShot(LanguageEditor.SHOWCASE_LANGUAGE_ELEMENT_NEWLINE)) {
-                            ShowcaseView myShowcase = new ShowcaseView.Builder((Activity) context)
-
-                                    .setTarget(new ViewTarget(holder.local_text))
-                                    .setStyle(R.style.CustomShowcaseTheme2)
-                                    .setContentTitle("Line break and other Symbols") // always in english
-                                    .setContentText("\n" + "Symbols like ^ are used internally for advancing to a new line.\n\nPlease be careful to preserve these exactly and also respect other symbols you find like : which may affect the user interface if removed.") // always in english
-                                    .setShowcaseDrawer(new JamorhamShowcaseDrawer(context.getResources(), context.getTheme(), 90, 50))
-                                    .singleShot(LanguageEditor.oneshot ? LanguageEditor.SHOWCASE_LANGUAGE_ELEMENT_NEWLINE : -1)
-                                    .build();
-
-                            myShowcase.setBackgroundColor(Color.TRANSPARENT);
-                            myShowcase.show();
-                            showcased_newline = true;
-                        } else {
-                            showcased_newline = true;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     @Override

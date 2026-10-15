@@ -1,11 +1,11 @@
 apply plugin: 'com.android.library'
 android {
-    compileSdkVersion 23
-    buildToolsVersion '23.0.3'
+    compileSdkVersion 36
 
     defaultConfig {
-        minSdkVersion 3
-        targetSdkVersion 17
+        minSdkVersion 26
+        targetSdkVersion 26
+        multiDexEnabled false
     }
 
 
@@ -15,6 +15,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
     }
+    namespace 'com.twofortyfouram.locale.api'
 }
 
 dependencies {

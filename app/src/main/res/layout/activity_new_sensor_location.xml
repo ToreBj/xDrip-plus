@@ -1,4 +1,4 @@
-<android.support.v4.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools" android:id="@+id/drawer_layout"
     android:layout_width="match_parent" android:layout_height="match_parent"
     tools:context="com.eveningoutpost.dexdrip.Home">
@@ -25,7 +25,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="left"
-                        android:text="In the future xDrip would like to send anonymous sensor data to the developers to improve the calibration algorithm... If you decide to opt-in, you will be asked to confirm before each data transfer. Data will never be sent without your permission. To help us understand and fine-tune the calibration we would like to know where this sensor has been placed. Press the back button to cancel."
+                        android:text="@string/description_sensor_location"
                         android:textSize="15sp"/>
 
 
@@ -69,7 +69,7 @@
                 <Button
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Save sensor location"
+                    android:text="@string/save_sensor_location"
                     android:id="@+id/saveSensorLocation"
                     android:layout_alignParentBottom="true"
                     android:layout_centerHorizontal="true"
@@ -78,7 +78,7 @@
                 <Button
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="cancel"
+                    android:text="@string/cancel"
                     android:id="@+id/saveSensorLocationCancel"
                     android:layout_alignParentBottom="true"
                     android:layout_centerHorizontal="true"
@@ -96,5 +96,5 @@
         android:name="com.eveningoutpost.dexdrip.NavigationDrawerFragment"
         tools:layout="@layout/fragment_navigation_drawer" />
 
-</android.support.v4.widget.DrawerLayout>
+</androidx.drawerlayout.widget.DrawerLayout>
 

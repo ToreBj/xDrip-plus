@@ -9,10 +9,7 @@ import android.graphics.Color;
 import android.graphics.Point;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.DefaultItemAnimator;
-import android.support.v7.widget.LinearLayoutManager;
-import android.support.v7.widget.RecyclerView;
+
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.View;
@@ -20,14 +17,20 @@ import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
+import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.eveningoutpost.dexdrip.BaseAppCompatActivity;
 import com.eveningoutpost.dexdrip.Home;
-import com.eveningoutpost.dexdrip.ImportedLibraries.dexcom.Constants;
-import com.eveningoutpost.dexdrip.Models.JoH;
-import com.eveningoutpost.dexdrip.Models.Profile;
-import com.eveningoutpost.dexdrip.Models.UserError;
+import com.eveningoutpost.dexdrip.importedlibraries.dexcom.Dex_Constants;
+import com.eveningoutpost.dexdrip.models.JoH;
+import com.eveningoutpost.dexdrip.models.Profile;
+import com.eveningoutpost.dexdrip.models.UserError;
 import com.eveningoutpost.dexdrip.R;
-import com.eveningoutpost.dexdrip.UtilityModels.JamorhamShowcaseDrawer;
-import com.eveningoutpost.dexdrip.UtilityModels.ShotStateStore;
+import com.eveningoutpost.dexdrip.utilitymodels.JamorhamShowcaseDrawer;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
+import com.eveningoutpost.dexdrip.utilitymodels.ShotStateStore;
 import com.eveningoutpost.dexdrip.utils.Preferences;
 import com.github.amlcurran.showcaseview.ShowcaseView;
 import com.github.amlcurran.showcaseview.targets.Target;
@@ -42,7 +45,7 @@ import java.util.List;
  * Created by jamorham on 21/06/2016.
  */
 
-public class ProfileEditor extends AppCompatActivity {
+public class ProfileEditor extends BaseAppCompatActivity {
 
     private static final String TAG = "jamorhamprofile";
     private final List<ProfileItem> profileItemList = new ArrayList<>();
@@ -73,7 +76,7 @@ public class ProfileEditor extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         mContext = this;
-        doMgdl = (Home.getPreferencesStringWithDefault("units", "mgdl").equals("mgdl"));
+        doMgdl = (Pref.getString("units", "mgdl").equals("mgdl"));
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profile_editor);
 
@@ -83,6 +86,7 @@ public class ProfileEditor extends AppCompatActivity {
         adjustallSeekBar = (SeekBar) findViewById(R.id.profileAdjustAllseekBar);
         adjustPercentage = (TextView) findViewById(R.id.profileAdjustAllPercentage);
 
+        profileItemList.clear();
         profileItemList.addAll(loadData(true));
 
         //Toolbar toolbar = (Toolbar) findViewById(R.id.profile_toolbar);
@@ -127,8 +131,8 @@ public class ProfileEditor extends AppCompatActivity {
 
         if (profileItemList.size() == 0) {
             profileItemList.add(new ProfileItem(0, END_OF_DAY,
-                    JoH.tolerantParseDouble(Home.getPreferencesStringWithDefault("profile_carb_ratio_default", "10")),
-                    JoH.tolerantParseDouble(Home.getPreferencesStringWithDefault("profile_insulin_sensitivity_default", "0.1"))));
+                    JoH.tolerantParseDouble(Pref.getString("profile_carb_ratio_default", "10"), 10d),
+                    JoH.tolerantParseDouble(Pref.getString("profile_insulin_sensitivity_default", "0.1"), 0.1d)));
         }
 
         updateAdjustmentFactor(1.0);
@@ -258,10 +262,19 @@ public class ProfileEditor extends AppCompatActivity {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        profileItemList.clear();
+        profileItemList.addAll(loadData(true));
+        mAdapter.notifyDataSetChanged();
+    }
+
+    @Override
     public void onPause() {
         super.onPause();
 
         if (dataChanged) {
+            Profile.reloadPreferences();
             Intent intent = new Intent(ProfileEditor.this, Preferences.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             intent.putExtra("refresh", "");
@@ -305,7 +318,7 @@ public class ProfileEditor extends AppCompatActivity {
             profileItemListTmp.addAll(profileItemList); // no need to clone
 
             for (ProfileItem item : profileItemListTmp) {
-                item.carb_ratio = Math.round(item.carb_ratio); // round to nearest g
+                item.carb_ratio = (double) (Math.round(item.carb_ratio * 10)) / 10; // round to nearest .1g
                 item.sensitivity = (double) (Math.round(item.sensitivity * 10)) / 10;
             }
         }
@@ -313,24 +326,28 @@ public class ProfileEditor extends AppCompatActivity {
         String data = gson.toJson(profileItemListTmp);
         if (for_real) {
             saveBtn.setVisibility(View.INVISIBLE);
-            Home.setPreferencesString("saved_profile_list_json", data);
-            Home.setPreferencesString("saved_profile_list_json_working", "");
-            Log.d(TAG, "Saved final data");
+            saveProfileJson(data);
             UserError.Log.uel(TAG, "Saved Treatment Profile data, timeblocks:" + profileItemListTmp.size());
             updateAdjustmentFactor(1.0); // reset it
             dataChanged = true;
             Profile.invalidateProfile();
 
         } else {
-            Home.setPreferencesString("saved_profile_list_json_working", data);
+            Pref.setString("saved_profile_list_json_working", data);
             saveBtn.setVisibility(View.VISIBLE);
             undoBtn.setVisibility(View.VISIBLE);
             Log.d(TAG, "Saved working data");
         }
     }
 
+    public static void saveProfileJson(final String data) {
+        Pref.setString("saved_profile_list_json", data);
+        Pref.setString("saved_profile_list_json_working", "");
+        Log.d(TAG, "Saved final data");
+    }
+
     private void clearWorkingData() {
-        Home.setPreferencesString("saved_profile_list_json_working", "");
+        Pref.setString("saved_profile_list_json_working", "");
     }
 
     public void profileCancelButton(View myview) {
@@ -361,7 +378,7 @@ public class ProfileEditor extends AppCompatActivity {
         last_conversion = multiplier;
         final List<ProfileItem> mydata = ProfileEditor.loadData(false);
         for (ProfileItem item : mydata) {
-            item.carb_ratio = Math.round(item.carb_ratio); // round to nearest g
+            item.carb_ratio = (double) (Math.round(item.carb_ratio * 10)) / 10; // round to nearest .1g
             item.sensitivity = (double) (Math.round(item.sensitivity * 10 * multiplier)) / 10;
         }
         final Gson gson = new GsonBuilder()
@@ -370,16 +387,16 @@ public class ProfileEditor extends AppCompatActivity {
                 .create();
         final String data = gson.toJson(mydata);
 
-        Home.setPreferencesString("saved_profile_list_json", data);
-        Home.setPreferencesString("saved_profile_list_json_working", "");
-        UserError.Log.uel(TAG, "Converted Profile data with multiplier: " + ((multiplier == Constants.MG_DL_TO_MMOL_L) ? " to mmol/l" : "to mg/dl"));
+        Pref.setString("saved_profile_list_json", data);
+        Pref.setString("saved_profile_list_json_working", "");
+        UserError.Log.uel(TAG, "Converted Profile data with multiplier: " + ((multiplier == Dex_Constants.MG_DL_TO_MMOL_L) ? " to mmol/l" : "to mg/dl"));
     }
 
     public static List<ProfileItem> loadData(boolean buttons) {
         final List<ProfileItem> myprofileItemList = new ArrayList<>();
-        String data = Home.getPreferencesStringWithDefault("saved_profile_list_json_working", "");
+        String data = Pref.getString("saved_profile_list_json_working", "");
         if (data.length() == 0) {
-            data = Home.getPreferencesStringWithDefault("saved_profile_list_json", "");
+            data = Pref.getString("saved_profile_list_json", "");
 
             if (buttons) {
                 saveBtn.setVisibility(View.INVISIBLE);
@@ -406,8 +423,9 @@ public class ProfileEditor extends AppCompatActivity {
         }
         if (myprofileItemList.size() == 0) {
             try {
-                ProfileItem item = new ProfileItem(0, END_OF_DAY, Double.parseDouble(Home.getPreferencesStringWithDefault("profile_carb_ratio_default", "10")),
-                        Double.parseDouble(Home.getPreferencesStringWithDefault("profile_insulin_sensitivity_default", "0.1")));
+                Log.d(TAG,"Creating default profile entries: sens default: "+ Pref.getString("profile_insulin_sensitivity_default", "0.1"));
+                ProfileItem item = new ProfileItem(0, END_OF_DAY, Double.parseDouble(Pref.getString("profile_carb_ratio_default", "10")),
+                        Double.parseDouble(Pref.getString("profile_insulin_sensitivity_default", "0.1")));
                 myprofileItemList.add(item);
             } catch (Exception e) {
                 Home.toaststatic("Problem with default insulin parameters");

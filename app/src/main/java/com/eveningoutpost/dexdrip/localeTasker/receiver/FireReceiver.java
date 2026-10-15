@@ -16,24 +16,33 @@
 package com.eveningoutpost.dexdrip.localeTasker.receiver;
 
 
-import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.PowerManager;
+import androidx.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Toast;
 
-import com.eveningoutpost.dexdrip.Models.JoH;
+import com.eveningoutpost.dexdrip.models.JoH;
 import com.eveningoutpost.dexdrip.R;
+import com.eveningoutpost.dexdrip.SnoozeActivity;
+import com.eveningoutpost.dexdrip.utilitymodels.AlertPlayer;
+import com.eveningoutpost.dexdrip.utilitymodels.CollectionServiceStarter;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
 import com.eveningoutpost.dexdrip.localeTasker.Constants;
 import com.eveningoutpost.dexdrip.localeTasker.bundle.BundleScrubber;
 import com.eveningoutpost.dexdrip.localeTasker.bundle.PluginBundleManager;
 import com.eveningoutpost.dexdrip.localeTasker.ui.EditActivity;
+import com.eveningoutpost.dexdrip.utils.BgToSpeech;
 import com.eveningoutpost.dexdrip.xdrip;
 
+import java.util.Arrays;
 import java.util.Locale;
+
+import static com.eveningoutpost.dexdrip.utils.BgToSpeech.BG_TO_SPEECH_PREF;
 
 
 /**
@@ -52,11 +61,6 @@ public final class FireReceiver extends BroadcastReceiver {
      */
     private final String TAG = FireReceiver.class.getSimpleName();
 
-//    private SharedPreferences getMultiProcessSharedPreferences(Context context)
-//    {
-//        return context.getSharedPreferences(Preferences.getMultiProcessSharedPreferencesName(), Context.MODE_MULTI_PROCESS);
-//
-//    }
 
     @Override
     public void onReceive(final Context context, final Intent intent) {
@@ -88,15 +92,17 @@ public final class FireReceiver extends BroadcastReceiver {
                 final String message = bundle.getString(PluginBundleManager.BUNDLE_EXTRA_STRING_MESSAGE);
 
                 if ((message != null) && !message.isEmpty()) {
-                    String[] message_array = message.split("\\s+"); // split by space
+                    final String[] message_array = message.split("\\s+"); // split by space
+                    Log.d(TAG,"Received tasker message: "+message);
 
+                    final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(xdrip.getAppContext());
 
                     // Commands recognised:
                     //
 
                     // CAL: BG: -> Calibrate from a historical blood glucose reading
 
-                    switch (message_array[0]) {
+                    switch (message_array[0].toUpperCase()) {
 
                         case "CAL":
                         case "BG":
@@ -111,13 +117,18 @@ public final class FireReceiver extends BroadcastReceiver {
                             // bgage is positive age ago of bg test reading in seconds (minus applied later)
 
                             // We push the values to the Calibration Activity
-                            Intent calintent = new Intent();
+                            if (message_array.length < 3) {
+                                Log.e(TAG, "Not enough parameters for BG message");
+                                break;
+                            }
+                            final Intent calintent = new Intent();
                             calintent.setClassName(xdrip.getAppContext().getString(R.string.local_target_package), "com.eveningoutpost.dexdrip.AddCalibration");
                             calintent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
+                            calintent.putExtra("timestamp", JoH.tsl());
                             calintent.putExtra("bg_string", message_array[1]);
                             calintent.putExtra("bg_age", message_array[2]);
                             calintent.putExtra("from_external", "true");
+                            calintent.putExtra("cal_source", "FireReceiver");
                             context.startActivity(calintent);
 
                             break;
@@ -130,11 +141,138 @@ public final class FireReceiver extends BroadcastReceiver {
 
                             break;
 
+                        // VOLUME set volume profile, eg
+
+                        /*  <item>High</item>
+                            <item>medium</item>
+                            <item>ascending</item>
+                            <item>vibrate only</item>
+                            <item>Silent</item>
+                        */
+
+                        // Case sensitive so be careful
+
+                        case "VOLUME":
+                            final String[] volumeArray = xdrip.getAppContext().getResources().getStringArray(R.array.BgAlertProfileValues);
+                            if (message_array.length > 1) {
+                                if (Arrays.asList(volumeArray).contains(message_array[1])) {
+                                    Pref.setString("bg_alert_profile", message_array[1]);
+                                    JoH.static_toast_long("Volume Profile changed by Tasker to: "+message_array[1]);
+                                } else {
+                                    JoH.static_toast_long("Invalid volume parameter: one of: " + Arrays.asList(volumeArray).toString());
+                                }
+                            } else {
+                                JoH.static_toast_long("VOLUME command must be followed by volume profile name: "+Arrays.asList(volumeArray).toString());
+                            }
+                            break;
+
                         case "SNOOZE":
+                            // default: snoozes the length of the current alert, or the default alert length
+                            int minutes = -1;
+                            if (message_array.length > 1) {
+                                minutes = Integer.valueOf(message_array[1]);
+                                JoH.static_toast_long("SNOOZE from Tasker for "+minutes+" min");
+                            } else {
+                                JoH.static_toast_long("SNOOZE from Tasker");
+                            }
+                            AlertPlayer.getPlayer().Snooze(xdrip.getAppContext(), minutes);
+                            break;
 
-                            Toast.makeText(context, message, Toast.LENGTH_LONG).show();
+                        case "SNOOZE_LOW":
+                            // default: snoozes the length of the current alert, or the default alert length
+                            minutes = AlertPlayer.getPlayer().GuessDefaultSnoozeTime();
 
-                            // Snooze Alerts
+                            // If a specific number of minutes is given, use it.
+                            // If -1, enables this alert indefinitely.
+                            // If 0, disables an already configured alert.
+                            if (message_array.length > 1) {
+                                minutes = Integer.valueOf(message_array[1]);
+                            }
+
+                            if (minutes == -1) {
+                                JoH.static_toast_long("SNOOZE_LOW from Tasker enabled indefinitely (until disabled)");
+                            } else if (minutes == 0) {
+                                JoH.static_toast_long("SNOOZE_LOW from Tasker disabled");
+                            } else {
+                                JoH.static_toast_long("SNOOZE_LOW from Tasker for " + minutes + " min");
+                            }
+
+                            SnoozeActivity.snoozeForType(minutes, SnoozeActivity.SnoozeType.LOW_ALERTS, prefs);
+                            break;
+
+                        case "SNOOZE_HIGH":
+                            // default: snoozes the length of the current alert, or the default alert length
+                            minutes = AlertPlayer.getPlayer().GuessDefaultSnoozeTime();
+
+                            // If a specific number of minutes is given, use it.
+                            // If -1, enables this alert indefinitely.
+                            // If 0, disables an already configured alert.
+                            if (message_array.length > 1) {
+                                minutes = Integer.valueOf(message_array[1]);
+                            }
+
+                            if (minutes == -1) {
+                                JoH.static_toast_long("SNOOZE_HIGH from Tasker enabled indefinitely (until disabled)");
+                            } else if (minutes == 0) {
+                                JoH.static_toast_long("SNOOZE_HIGH from Tasker disabled");
+                            } else {
+                                JoH.static_toast_long("SNOOZE_HIGH from Tasker for " + minutes + " min");
+                            }
+
+                            SnoozeActivity.snoozeForType(minutes, SnoozeActivity.SnoozeType.HIGH_ALERTS, prefs);
+                            break;
+
+                            //opportunistic snooze that only does anything if an alert is active
+                        case "OSNOOZE":
+                            AlertPlayer.getPlayer().OpportunisticSnooze();
+                            break;
+
+                        case "RESTART":
+                            if (message_array.length> 1) {
+                                switch (message_array[1].toUpperCase()) {
+                                    case "COLLECTOR":
+                                        CollectionServiceStarter.restartCollectionService(xdrip.getAppContext());
+                                        JoH.static_toast_long("Collector restarted by Tasker");
+                                        break;
+                                    case "APP":
+                                        JoH.static_toast_long("xDrip restarted by Tasker");
+                                        JoH.hardReset();
+                                        break;
+                                    default:
+                                        JoH.static_toast_long("Unknown parameter to tasker restart command");
+                                }
+                            }
+                           break;
+
+                        case "SPEAK":
+                            if (message_array.length > 1) {
+                                switch (message_array[1].toUpperCase()) {
+                                    case "NOW":
+                                        BgToSpeech.speakNow(0);
+                                        JoH.static_toast_long("Speak Now by Tasker");
+                                        break;
+                                    case "ON":
+                                        Pref.setBoolean(BG_TO_SPEECH_PREF, true);
+                                        JoH.static_toast_long("Speech On by Tasker");
+                                        break;
+                                    case "OFF":
+                                        Pref.setBoolean(BG_TO_SPEECH_PREF, false);
+                                        JoH.static_toast_long("Speech Off by Tasker");
+                                        break;
+                                    case "ALERTON":
+                                        Pref.setBoolean("speak_alerts", true);
+                                        JoH.static_toast_long("Speech Alert On by Tasker");
+                                        break;
+                                    case "ALERTOFF":
+                                        Pref.setBoolean("speak_alerts", false);
+                                        JoH.static_toast_long("Speech Alert Off by Tasker");
+                                        break;
+                                    default:
+                                        JoH.static_toast_long("Unknown parameter to tasker speak command");
+                                }
+                            }
+                            break;
+
 
 
 //                    case "PREFS":
@@ -187,8 +325,12 @@ public final class FireReceiver extends BroadcastReceiver {
                             break;
                     }
 
+                } else {
+                    Log.e(TAG,"Message is empty!");
                 }
 
+            } else {
+                Log.e(TAG,"Bundle is invalid!");
             }
         } finally {
             JoH.releaseWakeLock(wl);

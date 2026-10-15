@@ -3,7 +3,7 @@ package com.eveningoutpost.dexdrip.profileeditor;
 
 import android.app.Activity;
 import android.content.Context;
-import android.support.v7.widget.RecyclerView;
+
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -15,7 +15,9 @@ import android.widget.RelativeLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-import com.eveningoutpost.dexdrip.Models.JoH;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.eveningoutpost.dexdrip.models.JoH;
 import com.eveningoutpost.dexdrip.R;
 
 import java.util.List;
@@ -30,27 +32,30 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
     private static final String TAG = "jamorhamprofile";
     private List<ProfileItem> profileList;
     private int sensTopScale = 1;
+    private int carbsTopScale = 1;
     private int sensTopMax = 1;
     private int carbTopMax = 1;
     private Context context;
-    public int first_run = 0;
+    int first_run = 0;
     public int max_position = -1;
     private boolean doMgdl;
 
-    interface ProfileCallBacks {
-
+    public interface TimePickerCallbacks {
         void onTimeUpdated(int newmins);
+    }
+    public interface DatePickerCallbacks {
+        void onDateSet(int year, int month, int day);
     }
 
 
-    public ProfileAdapter(Context ctx, List<ProfileItem> profileList, boolean doMgdl) {
+    ProfileAdapter(Context ctx, List<ProfileItem> profileList, boolean doMgdl) {
         this.profileList = profileList;
         this.context = ctx;
         this.doMgdl = doMgdl;
         calcTopScale();
     }
 
-    public void resetTopMax()
+    void resetTopMax()
     {
         sensTopMax=1;
         carbTopMax=1;
@@ -65,16 +70,17 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
     }
 
     // calculate top details for this list
-    public void calcTopScale() {
+    void calcTopScale() {
         for (ProfileItem item : profileList) {
             int this_scale = sensibleScale((int) item.sensitivity);
             sensTopScale = Math.max(sensTopScale, this_scale);
+            carbsTopScale = Math.max(carbsTopScale, sensibleScale((int) item.carb_ratio));
             sensTopMax = Math.max(sensTopMax, sensibleMax((int) item.sensitivity));
             carbTopMax = Math.max(carbTopMax, sensibleMax((int) item.carb_ratio));
         }
     }
 
-    public class MyViewHolder extends RecyclerView.ViewHolder {
+    class MyViewHolder extends RecyclerView.ViewHolder {
 
         public TextView title, day;
         SeekBar carbsSeekBar, sensSeekBar;
@@ -83,9 +89,10 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
         int value;
         TextView result, carbsresult, sensresult;
         int sensitivity_scaling = 1;
+        int carbs_scaling = 1;
         int position = -1;
 
-        public MyViewHolder(View view) {
+        MyViewHolder(View view) {
             super(view);
             title = (TextView) view.findViewById(R.id.title);
 
@@ -158,7 +165,7 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
         holder.carbsSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                holder.carbsresult.setText(Integer.toString(progress));
+                holder.carbsresult.setText(JoH.qs(((double) progress) / holder.carbs_scaling, 1));
             }
 
             @Override
@@ -173,8 +180,9 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
                     seekBar.setMax(seekBar.getMax() * 2);
                     // showcase tip
                 }
-                int value = seekBar.getProgress();
+                double value = seekBar.getProgress();
                 if (value < 1) value = 1;
+                value = value / holder.carbs_scaling;
 
                 profileList.get(holder.position).carb_ratio = value;
 
@@ -225,10 +233,14 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
         if (first_run > 0) {
 
             calcTopScale();
-            holder.carbsSeekBar.setMax(carbTopMax);
+            //holder.carbsSeekBar.setMax(carbTopMax);
+
+            holder.carbs_scaling = carbsTopScale;
+            holder.carbsSeekBar.setMax(carbTopMax * holder.carbs_scaling);
 
             holder.sensitivity_scaling = sensTopScale;
             holder.sensSeekBar.setMax(sensTopMax * holder.sensitivity_scaling);
+
 
             Log.d(TAG, "first run: " + first_run + " carbTopMax:"+carbTopMax+" Sensitivity: pos:" + position + "  scaling:" + sensTopScale + "/" + holder.sensitivity_scaling + " sensiblemax:" + sensTopMax + "/" + sensibleMax((int) profileItem.sensitivity));
 
@@ -238,8 +250,8 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
 
         holder.title.setText(profileItem.getTimePeriod());
 
-        holder.carbsSeekBar.setProgress((int) profileItem.carb_ratio);
-        holder.carbsresult.setText(JoH.qs(profileItem.carb_ratio, 0));
+        holder.carbsSeekBar.setProgress((int) (profileItem.carb_ratio) * holder.carbs_scaling);
+        holder.carbsresult.setText(JoH.qs(profileItem.carb_ratio, 1));
         holder.sensSeekBar.setProgress((int) (profileItem.sensitivity) * holder.sensitivity_scaling);
         holder.sensresult.setText(JoH.qs(profileItem.sensitivity, 1));
 
@@ -253,7 +265,7 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
                 public void onClick(View v) {
                     TimePickerFragment newFragment = new TimePickerFragment();
                     newFragment.setTimeObject(profileItem.start_min);
-                    newFragment.setTimeCallback(new ProfileCallBacks() {
+                    newFragment.setTimeCallback(new TimePickerCallbacks() {
                         @Override
                         public void onTimeUpdated(int newmins) {
                             profileItem.start_min = newmins;
@@ -274,7 +286,7 @@ public class ProfileAdapter extends RecyclerView.Adapter<ProfileAdapter.MyViewHo
                 public void onClick(View v) {
                     TimePickerFragment newFragment = new TimePickerFragment();
                     newFragment.setTimeObject(profileItem.end_min);
-                    newFragment.setTimeCallback(new ProfileCallBacks() {
+                    newFragment.setTimeCallback(new TimePickerCallbacks() {
                         @Override
                         public void onTimeUpdated(int newmins) {
                             profileItem.end_min = newmins;

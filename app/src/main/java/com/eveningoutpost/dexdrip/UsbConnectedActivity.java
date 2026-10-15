@@ -1,12 +1,11 @@
 package com.eveningoutpost.dexdrip;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 
-import com.eveningoutpost.dexdrip.ImportedLibraries.dexcom.SyncingService;
+import com.eveningoutpost.dexdrip.importedlibraries.dexcom.SyncingService;
 
-public class UsbConnectedActivity extends Activity {
+public class UsbConnectedActivity extends BaseActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
