@@ -1319,7 +1319,10 @@ public class Ob1G5CollectionService extends G5BaseService {
             return !inFailureTally(this_address) && pairKeeper.check(getTransmitterID(), this_address);
         }
 
-        boolean result = this_address.equalsIgnoreCase(historical_address) || (this_name != null && this_name.equalsIgnoreCase(search_name));
+        // the name only carries the last two characters of the id so skip devices which already rejected us
+        boolean result = this_address.equalsIgnoreCase(historical_address)
+                || (this_name != null && this_name.equalsIgnoreCase(search_name)
+                && !(emptyString(historical_address) && inFailureTally(this_address)));
         if (result) {
             if (historical_address.length() == this_address.length()
                     && !this_address.equalsIgnoreCase(historical_address)) {

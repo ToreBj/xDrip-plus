@@ -495,7 +495,10 @@ public class Ob1G5StateMachine {
                     parent.msg("Not Authorized! (Wrong TxID?)");
                     UserError.Log.e(TAG, "Authentication failed!!!!");
                     parent.incrementErrors();
-                    // TODO? try again?
+                    // could be another transmitter sharing the last two id characters, so remember and look for the right one
+                    parent.logFailure();
+                    parent.clearPersistStore();
+                    parent.changeState(SCAN);
                 }
                 break;
 

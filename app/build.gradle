@@ -184,6 +184,16 @@ android {
         }
     }
 
+    // second copy installable alongside the normal app, own app id and app name (see src/second)
+    buildTypes {
+        second {
+            initWith dev
+            applicationIdSuffix ".two"
+            versionNameSuffix "-two"
+            matchingFallbacks = ['dev', 'debug', 'release']
+        }
+    }
+
     flavorDimensions "version"
     productFlavors {
         // When building a variant that uses this flavor, the following configurations
@@ -420,3 +430,10 @@ tasks.withType(Test) {
 }
 
 apply plugin: 'com.google.gms.google-services'
+
+// the embedded watch app has the normal package name so it cannot be bundled into the second copy
+tasks.configureEach { task ->
+    if (task.name.endsWith("SecondMicroApk")) {
+        task.enabled = false
+    }
+}
